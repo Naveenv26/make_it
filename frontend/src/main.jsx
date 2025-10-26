@@ -3,14 +3,19 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import "./index.css";
 
-import ShopSetup from "./pages/ShopSetup";
+// Import all pages from both files
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Billing from "./pages/Billing";
 import Stock from "./pages/Stock";
-import Reports from "./pages/Reports"; 
+import Reports from "./pages/Reports";
+import Settings from "./pages/Settings";
+import Subscription from "./pages/Subscription"; // From file 1
+import ShopSetup from "./pages/ShopSetup";     // From file 2
+
+// Import common components
 import Layout from "./components/Layout";
-import PrivateRoute from "./components/PrivateRoute"; // ✅ import
+import PrivateRoute from "./components/PrivateRoute";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -18,10 +23,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <Routes>
         {/* Public route */}
         <Route path="/login" element={<Login />} />
-        
-        <Route path="/setup-shop" element={<ProtectedRoute><ShopSetup /></ProtectedRoute>} />
-        
-        {/* Protected routes */}
+
+        {/* Protected routes (with Layout) */}
         <Route
           path="/dashboard"
           element={
@@ -52,18 +55,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             </PrivateRoute>
           }
         />
-        
-      <Route
-        path="/settings"
-        element={
-          <PrivateRoute>
-            <Layout>
-              <Settings />
-            </Layout>
-          </PrivateRoute>
-        }
-      />
-
         <Route
           path="/reports"
           element={
@@ -71,6 +62,34 @@ ReactDOM.createRoot(document.getElementById("root")).render(
               <Layout>
                 <Reports />
               </Layout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <PrivateRoute>
+              <Layout>
+                <Settings />
+              </Layout>
+            </PrivateRoute>
+          }
+        />
+
+        {/* Protected routes (WITHOUT Layout) */}
+        <Route
+          path="/subscription"
+          element={
+            <PrivateRoute>
+              <Subscription />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/setup-shop"
+          element={
+            <PrivateRoute>
+              <ShopSetup />
             </PrivateRoute>
           }
         />

@@ -2,22 +2,35 @@ from django.db import models
 from django.utils import timezone
 
 class Invoice(models.Model):
+    # --- ADD THESE CHOICES AT THE TOP OF THE CLASS ---
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending'),
+        ('PAID', 'Paid'),
+        ('CANCELLED', 'Cancelled'),
+    ]
+
     shop = models.ForeignKey("shops.Shop", on_delete=models.CASCADE)
     customer = models.ForeignKey("customers.Customer", on_delete=models.SET_NULL, null=True, blank=True)
-    customer_name = models.CharField(max_length=140, null=True, blank=True)   # ✅ flexible
+    customer_name = models.CharField(max_length=140, null=True, blank=True)  # ✅ flexible
     customer_mobile = models.CharField(max_length=15, null=True, blank=True)  # ✅ flexible
 
     number = models.CharField(max_length=64, unique=True)
     invoice_date = models.DateTimeField(auto_now_add=True)
 
+    # --- ADD THIS STATUS FIELD ---
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='PENDING')
+
     subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     tax_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     discount_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     grand_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    
     payment_mode = models.CharField(max_length=20, default="cash")
     created_by = models.ForeignKey("accounts.User", on_delete=models.SET_NULL, null=True)
-
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
     def __str__(self):
         return f"{self.number} - {self.customer_name or 'Unknown'}"
 
@@ -35,4 +48,3 @@ class InvoiceItem(models.Model):
     
     def __str__(self):
         return f"{self.product.name} x {self.qty}"
-

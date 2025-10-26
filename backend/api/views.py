@@ -1,29 +1,51 @@
 # backend/api/views.py
-from rest_framework import viewsets, generics, permissions
-from rest_framework.response import Response
-from rest_framework.decorators import action
-from .serializers import (
-    SubscriptionPlanSerializer, RegisterSerializer, ProductSerializer, CustomerSerializer,
-    InvoiceSerializer, TaxProfileSerializer, ShopSerializer
-)
-from .models import SubscriptionPlan, Product, Customer, Invoice, TaxProfile, Shop
-import razorpay
+
+# --- Django Imports ---
 from django.conf import settings
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from .models import SubscriptionPlan, Payment, UserSubscription
-from .serializers import PaymentSerializer, UserSubscriptionSerializer
-from rest_framework.response import Response
-from rest_framework import status
-
 from django.contrib.auth import get_user_model
-
-User = get_user_model()
-from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.shortcuts import get_object_or_404
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
-from django.shortcuts import get_object_or_404
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+
+# --- 3rd Party Imports ---
+import razorpay
+from rest_framework import viewsets, generics, permissions, status
+from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.response import Response
+
+# --- Local App Imports ---
+
+# Serializers (from .serializers)
+from .serializers import (
+    SubscriptionPlanSerializer, 
+    RegisterSerializer, 
+    ProductSerializer, 
+    CustomerSerializer,
+    InvoiceSerializer, 
+    TaxProfileSerializer, 
+    ShopSerializer,
+    PaymentSerializer, 
+    UserSubscriptionSerializer
+    # Note: Merged all serializers into one block
+)
+
+# Models (from *THIS* app - 'api')
+from .models import SubscriptionPlan, Payment, UserSubscription
+# from .models import Expense # Uncomment if you use Expense in this file
+
+# Models (from *OTHER* apps)
+from catalog.models import Product
+from customers.models import Customer
+from sales.models import Invoice
+from shops.models import Shop, TaxProfile
+
+# Email utilities
 from .emails import send_password_reset_email
+
+# --- Setup ---
+User = get_user_model()
 
 
 # ---------- Registration ----------

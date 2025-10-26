@@ -46,3 +46,4 @@ class TaxProfile(models.Model):
 
     def __str__(self):
         return f"TaxProfile({self.shop.name})"
+

@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from "react-router-dom";
 import { FaBars, FaTimes } from "react-icons/fa";
+import axios from 'axios';
 
 export default function Layout({ children }) {
   const navigate = useNavigate();
@@ -20,12 +21,13 @@ export default function Layout({ children }) {
 }, []);
 
 
-  const links = [
-    { name: "Dashboard", path: "/", icon: "🏠" },
-    { name: "Billing", path: "/billing", icon: "🧾" },
-    { name: "Reports", path: "/reports", icon: "📊" },
-    { name: "Stock", path: "/stock", icon: "📦" },
-  ];
+const links = [
+  { name: "Dashboard", path: "/", icon: "🏠" },
+  { name: "Billing", path: "/billing", icon: "🧾" },
+  { name: "Reports", path: "/reports", icon: "📊" },
+  { name: "Stock", path: "/stock", icon: "📦" },
+  { name: "Subscription", path: "/subscription", icon: "⭐" }, // ✅ ADD THIS
+];
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">

@@ -2,10 +2,16 @@
 import re
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import (
-    Product, Customer, Invoice, InvoiceItem,
-    TaxProfile, Shop, SubscriptionPlan ,Payment, UserSubscription
-)
+from .models import SubscriptionPlan, UserSubscription, Payment, Expense
+from shops.models import TaxProfile
+
+
+# THIS IS THE FIX
+from catalog.models import Product
+from customers.models import Customer
+from sales.models import Invoice, InvoiceItem
+from shops.models import Shop
+
 
 # ---------- Register serializer ----------
 class RegisterSerializer(serializers.ModelSerializer):
@@ -88,10 +94,10 @@ class CustomerSerializer(serializers.ModelSerializer):
 class InvoiceItemSerializer(serializers.ModelSerializer):
     product_detail = ProductSerializer(source="product", read_only=True)
 
+    # THIS IS THE FIX
     class Meta:
         model = InvoiceItem
-        fields = ("id", "product", "product_detail", "quantity", "price")
-
+        fields = ("id", "product", "product_detail", "qty", "unit_price")
 
 class InvoiceSerializer(serializers.ModelSerializer):
     items = InvoiceItemSerializer(many=True)
@@ -130,17 +136,96 @@ class TaxProfileSerializer(serializers.ModelSerializer):
 
 
 class SubscriptionPlanSerializer(serializers.ModelSerializer):
+    plan_type_display = serializers.CharField(source='get_plan_type_display', read_only=True)
+    duration_display = serializers.CharField(source='get_duration_display', read_only=True)
+    
     class Meta:
         model = SubscriptionPlan
-        fields = "__all__"
+        fields = [
+            'id', 'name', 'plan_type', 'plan_type_display',
+            'duration', 'duration_display', 'price', 'duration_days',
+            'features', 'is_active', 'created_at'
+        ]
 
-class PaymentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Payment
-        fields = "__all__"
 
-
+# ========== USER SUBSCRIPTION SERIALIZER ==========
 class UserSubscriptionSerializer(serializers.ModelSerializer):
+    plan_details = SubscriptionPlanSerializer(source='plan', read_only=True)
+    plan_type = serializers.SerializerMethodField()
+    days_remaining = serializers.SerializerMethodField()
+    is_trial = serializers.SerializerMethodField()
+    
     class Meta:
         model = UserSubscription
-        fields = "__all__"
+        fields = [
+            'id', 'plan', 'plan_details', 'plan_type',
+            'trial_used', 'trial_end_date', 'start_date', 'end_date',
+            'active', 'allowed_by_admin', 'grace_period_end',
+            'days_remaining', 'is_trial', 'created_at'
+        ]
+    
+    def get_plan_type(self, obj):
+        return obj.get_plan_type()
+    
+    def get_days_remaining(self, obj):
+        from django.utils import timezone
+        if obj.is_trial_active():
+            delta = obj.trial_end_date - timezone.now()
+            return max(0, delta.days)
+        if obj.end_date:
+            delta = obj.end_date - timezone.now()
+            return max(0, delta.days)
+        return 0
+    
+    def get_is_trial(self, obj):
+        return obj.is_trial_active()
+
+
+# ========== PAYMENT SERIALIZER ==========
+class PaymentSerializer(serializers.ModelSerializer):
+    plan_details = SubscriptionPlanSerializer(source='plan', read_only=True)
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user_name = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = Payment
+        fields = [
+            'id', 'user', 'user_email', 'user_name',
+            'plan', 'plan_details', 'order_id', 'payment_id',
+            'amount', 'currency', 'status', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['order_id', 'payment_id', 'status']
+
+
+# ========== CREATE ORDER SERIALIZER ==========
+class CreateOrderSerializer(serializers.Serializer):
+    plan_id = serializers.IntegerField()
+    
+    def validate_plan_id(self, value):
+        try:
+            plan = SubscriptionPlan.objects.get(id=value, is_active=True)
+            return value
+        except SubscriptionPlan.DoesNotExist:
+            raise serializers.ValidationError("Invalid or inactive plan.")
+
+
+# ========== VERIFY PAYMENT SERIALIZER ==========
+class VerifyPaymentSerializer(serializers.Serializer):
+    razorpay_order_id = serializers.CharField()
+    razorpay_payment_id = serializers.CharField()
+    razorpay_signature = serializers.CharField()
+
+
+# ========== EXPENSE SERIALIZER (PRO FEATURE) ==========
+class ExpenseSerializer(serializers.ModelSerializer):
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True)
+    
+    class Meta:
+        model = Expense
+        fields = [
+            'id', 'shop', 'category', 'category_display',
+            'amount', 'description', 'date', 'receipt_number',
+            'vendor_name', 'created_by', 'created_by_name', 'created_at'
+        ]
+        read_only_fields = ['created_by', 'created_at']

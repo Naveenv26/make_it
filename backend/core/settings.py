@@ -5,7 +5,8 @@ import environ
 # Initialise environment variables
 env = environ.Env()
 environ.Env.read_env()  # reads .env file at BASE_DIR
-
+RAZORPAY_KEY_ID = env("RAZORPAY_KEY_ID", default="")
+RAZORPAY_KEY_SECRET = env("RAZORPAY_KEY_SECRET", default="")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'dev-secret-key-change-me'

@@ -8,6 +8,16 @@ from .views import (
 from .auth_views import CookieTokenObtainPairView, CookieTokenRefreshView, logout_view
 from .razorpay_webhook import razorpay_webhook
 from .views import ForgotPasswordView, ResetPasswordView
+# Import new payment views
+from .payment_views import (
+    SubscriptionPlanViewSet,
+    create_order,
+    verify_payment,
+    subscription_status,
+    start_trial,
+    payment_history,
+    razorpay_webhook
+)
 
 
 router = DefaultRouter()
@@ -32,8 +42,11 @@ urlpatterns = [
 
     # Razorpay webhook
     path("payments/create-order/", create_order, name="create-order"),
-    path("payments/razorpay-webhook/", razorpay_webhook, name="razorpay-webhook"),
-    path("payments/check-subscription/", check_subscription, name="check-subscription"),
+    path("payments/verify-payment/", verify_payment, name="verify-payment"),
+    path("payments/subscription-status/", subscription_status, name="subscription-status"),
+    path("payments/start-trial/", start_trial, name="start-trial"),
+    path("payments/history/", payment_history, name="payment-history"),
+    path("payments/webhook/", razorpay_webhook, name="razorpay-webhook"),
     # API routes
     path("", include(router.urls)),
 ]
