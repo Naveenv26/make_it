@@ -69,18 +69,23 @@ export default function Dashboard() {
 
     fetchData();
   }, []);
+// --- Calculated Metrics ---
+const totalSales = invoices.reduce(
+  (sum, inv) => sum + Number(inv.grand_total || 0), // Use grand_total consistently
+  0
+);
+const totalInvoices = invoices.length;
+const totalProducts = products.length;
 
-  // --- Calculated Metrics ---
-  const totalSales = invoices.reduce(
-    (sum, inv) => sum + Number(inv.total || inv.grand_total || 0),
-    0
-  );
-  const totalInvoices = invoices.length;
-  const totalProducts = products.length;
-  const lowStock = products.filter(
-    (p) => Number(p.quantity) > 0 && Number(p.quantity) <= Number(p.low_stock_threshold)
-  ).length;
-  const outOfStock = products.filter((p) => Number(p.quantity) === 0).length;
+// --- FIX: Use a fixed threshold (e.g., 5) or fetch from settings ---
+const LOW_STOCK_THRESHOLD = 5; // Define the threshold here
+
+const lowStock = products.filter(
+  (p) => Number(p.quantity) > 0 && Number(p.quantity) <= LOW_STOCK_THRESHOLD
+).length;
+// ---------------------------------------------------------------------
+
+const outOfStock = products.filter((p) => Number(p.quantity) === 0).length;
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen text-gray-500">Loading, please wait...</div>;
@@ -142,7 +147,9 @@ export default function Dashboard() {
                   {invoices.slice(0, 10).map((inv) => (
                     <tr key={inv.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">#{inv.id}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{inv.customer_name || "N/A"}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                        {inv.customer_detail?.name || inv.customer_name || "Walk-in"}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                         {new Date(inv.created_at || inv.invoice_date).toLocaleDateString("en-GB")}
                       </td>

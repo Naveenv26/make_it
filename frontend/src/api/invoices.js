@@ -2,21 +2,21 @@ import client from "./client";
 
 // Create invoice (matches backend payload)
 export const createInvoice = async (data) => {
-  // backend expects: shop, customer, items, total_amount
+  // --- THIS IS THE FIX ---
+  // Backend expects flat customer_name, customer_mobile, and shop ID.
   const payload = {
-    shop: data.shop || 1, // default shop for testing
-    customer: {
-      name: data.customer_name || "",
-      mobile: data.customer_mobile || "",
-    },
+    shop: data.shop, // Pass the shop ID from Billing.jsx
+    customer_name: data.customer_name || "Walk-in", // Use flat field
+    customer_mobile: data.customer_mobile || "", // Use flat field
     items: data.items.map((c) => ({
       product: c.product, // product ID
       qty: c.qty,
       unit_price: c.unit_price,
       tax_rate: c.tax_rate,
     })),
-    total_amount: data.grand_total, // frontend total
+    grand_total: data.grand_total, // Send the calculated grand total
   };
+  // -------------------------
 
   const res = await client.post("/invoices/", payload);
   return res.data;
@@ -25,7 +25,8 @@ export const createInvoice = async (data) => {
 // Get all invoices
 export const getInvoices = async () => {
   const res = await client.get("/invoices/");
-  return res.data;
+  // Handle both {data: [...]} and [...] responses
+  return res?.data || res || []; 
 };
 
 // Get single invoice

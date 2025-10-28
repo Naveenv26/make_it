@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.db.models import Sum, Count
 
 # --- 3rd Party Imports ---
 import razorpay
@@ -27,8 +28,8 @@ from .serializers import (
     TaxProfileSerializer, 
     ShopSerializer,
     PaymentSerializer, 
-    UserSubscriptionSerializer
-    # Note: Merged all serializers into one block
+    UserSubscriptionSerializer,
+    UserSerializer  # <-- FIX: This import will now work
 )
 
 # Models (from *THIS* app - 'api')
@@ -57,7 +58,7 @@ class RegisterView(generics.CreateAPIView):
 class SubscriptionPlanViewSet(viewsets.ModelViewSet):
     queryset = SubscriptionPlan.objects.all()
     serializer_class = SubscriptionPlanSerializer
-    permission_classes = (permissions.IsAuthenticated,)
+    permission_classes = (permissions.IsAuthenticated,) # Keep as IsAuthenticated
 
 # ---------- Reports ----------
 class ReportsViewSet(viewsets.ViewSet):
@@ -65,59 +66,118 @@ class ReportsViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'])
     def sales_summary(self, request):
-        total_sales = sum(inv.total_amount for inv in Invoice.objects.all())
-        total_invoices = Invoice.objects.count()
+        # --- FIX: Filter invoices by the user's shop ---
+        if not request.user.shop:
+            return Response({"error": "User is not associated with a shop"}, status=400)
+            
+        # Use aggregation for efficiency
+        summary = Invoice.objects.filter(shop=request.user.shop).aggregate(
+            total_sales=Sum('grand_total'),
+            total_invoices=Count('id')
+        )
+        
         return Response({
-            "total_sales": total_sales,
-            "total_invoices": total_invoices
+            "total_sales": summary['total_sales'] or 0,
+            "total_invoices": summary['total_invoices'] or 0
         })
 
     def list(self, request):
         return Response({"detail": "Reports endpoint"})
-    
-# ---------- Standard CRUD ----------
-class ProductViewSet(viewsets.ModelViewSet):
+
+# ---------- Base Class for Shop Filtering ----------
+class ShopFilteredViewSet(viewsets.ModelViewSet):
+    """
+    Base ViewSet that automatically filters querysets by request.user.shop
+    and assigns request.user.shop on creation.
+    """
+    permission_classes = (permissions.IsAuthenticated,) # Ensures user is logged in
+
+    def get_queryset(self):
+        """
+        This method is called for LIST and RETRIEVE actions.
+        It filters the queryset to only include objects for the user's shop.
+        """
+        user = self.request.user
+        # Get the base queryset from the child class (e.g., Product.objects.all())
+        base_queryset = super().get_queryset() 
+        
+        if user.is_authenticated and hasattr(user, 'shop') and user.shop is not None:
+            # Filter by the user's shop
+            return base_queryset.filter(shop=user.shop)
+        
+        # User has no shop, return empty
+        return base_queryset.none() 
+
+    def perform_create(self, serializer):
+        """
+        This method is called for CREATE actions.
+        It automatically sets the 'shop' field to the user's shop.
+        """
+        if hasattr(self.request.user, 'shop') and self.request.user.shop is not None:
+             # Save the new object, linking it to the user's shop
+            serializer.save(shop=self.request.user.shop)
+        else:
+            # This should not happen if permissions are set correctly, but as a fallback
+            raise permissions.ValidationError("You are not associated with a shop and cannot create this object.")
+
+# ---------- Standard CRUD (FIXED with Filtering) ----------
+class ProductViewSet(ShopFilteredViewSet): # <-- Use base class
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
-    permission_classes = (permissions.IsAuthenticated,)
+    # permission_classes are inherited
 
 
-class CustomerViewSet(viewsets.ModelViewSet):
+class CustomerViewSet(ShopFilteredViewSet): # <-- Use base class
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
-    permission_classes = (permissions.IsAuthenticated,)
+    # permission_classes are inherited
 
 
-class InvoiceViewSet(viewsets.ModelViewSet):
-    queryset = Invoice.objects.all()
+class InvoiceViewSet(ShopFilteredViewSet): # <-- Use base class
+    queryset = Invoice.objects.all().order_by('-invoice_date') # Show newest first
     serializer_class = InvoiceSerializer
-    permission_classes = (permissions.IsAuthenticated,)
+    # permission_classes are inherited
 
 
-class TaxProfileViewSet(viewsets.ModelViewSet):
+class TaxProfileViewSet(ShopFilteredViewSet): # <-- Use base class
     queryset = TaxProfile.objects.all()
     serializer_class = TaxProfileSerializer
-    permission_classes = (permissions.IsAuthenticated,)
+    # permission_classes are inherited
 
 
-class ShopViewSet(viewsets.ModelViewSet):
+class ShopViewSet(viewsets.ModelViewSet): # <-- This one is special
     queryset = Shop.objects.all()
     serializer_class = ShopSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
-# ---------- Current User ----------
+    # Override get_queryset to only return the user's OWN shop
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_authenticated and hasattr(user, 'shop') and user.shop is not None:
+            return Shop.objects.filter(id=user.shop.id)
+        return Shop.objects.none()
+
+# ---------- Current User (FIXED) ----------
 class MeViewSet(viewsets.ViewSet):
     permission_classes = (permissions.IsAuthenticated,)
 
     def list(self, request):
         user = request.user
+        user_data = UserSerializer(user).data # Get user details
+        
+        shop_data = None
+        if user.shop:
+            # Get shop details if they exist
+            shop_data = ShopSerializer(user.shop).data
+        
         return Response({
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
+            "user": user_data,
+            "shop": shop_data  # <-- Send shop data to frontend
         })
-RAZORPAY_KEY_ID = "rzp_test_dummy123"
-RAZORPAY_KEY_SECRET = "dummy_secret"
+
+# ---------- Payment & Subscription Views ----------
+RAZORPAY_KEY_ID = settings.RAZORPAY_KEY_ID
+RAZORPAY_KEY_SECRET = settings.RAZORPAY_KEY_SECRET
 
 razorpay_client = razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
@@ -173,7 +233,6 @@ def check_subscription(request):
 
 # ---------- Forgot Password ----------
 from rest_framework.views import APIView
-from rest_framework import status
 
 class ForgotPasswordView(APIView):
     permission_classes = (permissions.AllowAny,)
@@ -183,13 +242,17 @@ class ForgotPasswordView(APIView):
         if not email:
             return Response({"error": "Email is required."}, status=400)
 
-        user = User.objects.filter(email=email).first()
+        # --- FIX: Use email__iexact for case-insensitive search ---
+        user = User.objects.filter(email__iexact=email).first()
         if not user:
-            return Response({"error": "No account found with this email."}, status=404)
+             # Do not reveal if user exists
+            return Response({"message": "If an account with this email exists, a reset link has been sent."})
 
         token = PasswordResetTokenGenerator().make_token(user)
         uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
-        reset_url = f"http://localhost:5173/reset-password/{uidb64}/{token}"  # frontend link
+        # --- FIX: Use env variable for frontend URL ---
+        frontend_url = settings.FRONTEND_URL or "http://localhost:5173"
+        reset_url = f"{frontend_url}/reset-password/{uidb64}/{token}"
 
         send_password_reset_email(email, reset_url)
         return Response({"message": "Password reset link sent to your email."})
@@ -221,4 +284,3 @@ class ResetPasswordView(APIView):
         user.set_password(password)
         user.save()
         return Response({"message": "Password reset successful."}, status=200)
-    

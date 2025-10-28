@@ -1,51 +1,51 @@
-// src/api/axios.js
+// frontend/src/api/axios.js
 import axios from "axios";
-import { refreshToken, logout } from "./auth";
+import { logout } from "./auth"; // Import the logout function
 
-// Create API client
+// NOTE: Use your environment-specific URL
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+
 const api = axios.create({
-  baseURL: "http://localhost:8000/api",
-  withCredentials: true, // important if JWT is in HttpOnly cookie
+  baseURL: API_BASE,
+  headers: { "Content-Type": "application/json" },
 });
 
-// Attach JWT token from localStorage (if any)
+// --- THIS IS THE CRITICAL PART ---
+// Request Interceptor: Attach the token to every request
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("token"); // fallback for Authorization header
+    const token = localStorage.getItem("access_token");
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers["Authorization"] = `Bearer ${token}`;
     }
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    return Promise.reject(error);
+  }
 );
 
-// Auto-refresh token on 401
+// --- THIS EXPLAINS THE LOGOUT ---
+// Response Interceptor: Handle 401 Unauthorized errors
 api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const originalRequest = error.config;
-
-    if (
-      error.response?.status === 401 &&
-      !originalRequest._retry &&
-      !originalRequest.url.includes("auth/login") &&
-      !originalRequest.url.includes("auth/refresh")
-    ) {
-      originalRequest._retry = true;
-      try {
-        const newToken = await refreshToken();
-        if (newToken) {
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
-          return api(originalRequest); // retry original request
-        } else {
-          logout();
-        }
-      } catch (e) {
-        logout();
+  (response) => {
+    // If the request was successful, just return the response
+    return response;
+  },
+  (error) => {
+    // Check if the error is a 401 (Unauthorized)
+    if (error.response && error.response.status === 401) {
+      // Don't logout on token refresh failure, as it might create a loop
+      if (error.config.url.includes("/token/refresh/")) {
+        return Promise.reject(error);
       }
+      
+      // For any other 401, the token is bad, so log the user out
+      console.error("Unauthorized request. Logging out.");
+      logout();
     }
-
+    
+    // Return any other errors
     return Promise.reject(error);
   }
 );

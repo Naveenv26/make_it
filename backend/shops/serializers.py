@@ -49,23 +49,25 @@ class ShopRegistrationSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=120)
     address = serializers.CharField(required=False, allow_blank=True)
     contact_phone = serializers.CharField(required=False, allow_blank=True)
+    
+    # Use contact_email for the shop itself, can be different from owner's login
     contact_email = serializers.EmailField(required=False, allow_blank=True)
     language = serializers.CharField(default="en")
 
-    # Owner fields
-    owner_username = serializers.CharField(max_length=150)
+    # Owner fields - CHANGED to owner_email
+    owner_email = serializers.EmailField() # Changed from owner_username
     owner_password = serializers.CharField(write_only=True, min_length=8)
 
     # Optional shopkeeper
     create_shopkeeper = serializers.BooleanField(default=False)
     shopkeeper_password = serializers.CharField(required=False, write_only=True)
 
-    def validate_owner_username(self, value):
+    def validate_owner_email(self, value): # Changed from validate_owner_username
         """
-        Check that the username is not already in use.
+        Check that the email is not already in use.
         """
-        if User.objects.filter(username=value).exists():
-            raise serializers.ValidationError("A user with this username already exists.")
+        if User.objects.filter(email=value).exists(): # Changed to check email
+            raise serializers.ValidationError("A user with this email already exists.")
         return value
     
     def validate(self, data):
@@ -86,19 +88,21 @@ class ShopRegistrationSerializer(serializers.Serializer):
             language=validated_data.get("language", "en"),
         )
 
-        # Create owner
+        # Create owner - CHANGED to use email
         owner = User.objects.create(
-            username=validated_data["owner_username"],
+            email=validated_data["owner_email"], # Set email
+            username=validated_data["owner_email"], # Set username to email as well
             password=make_password(validated_data["owner_password"]),
             role="SHOP_OWNER",
             shop=shop,
         )
 
-        # Optional shopkeeper
+        # Optional shopkeeper - CHANGED to use email
         if validated_data.get("create_shopkeeper"):
             shopkeeper_password = validated_data.get("shopkeeper_password")
             User.objects.create(
-                username=f"{validated_data['owner_username']}_keeper",
+                email=f"keeper_{validated_data['owner_email']}", # Create a unique email
+                username=f"{validated_data['owner_email']}_keeper", # Keep username unique
                 password=make_password(shopkeeper_password),
                 role="SHOP_KEEPER",
                 shop=shop,

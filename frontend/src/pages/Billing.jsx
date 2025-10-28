@@ -1,4 +1,4 @@
-// Billing.jsx (Updated & Optimized)
+// frontend/src/pages/Billing.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { getProducts } from "../api/products";
 import { createInvoice } from "../api/invoices";
@@ -31,13 +31,16 @@ export default function Billing() {
   const loadProducts = async () => {
     try {
       const res = await getProducts();
-      const normalized = Array.isArray(res)
-        ? res.map((p) => ({
+      // Handle both {data: [...]} and [...] responses
+      const data = res.data || res; 
+      const normalized = Array.isArray(data)
+        ? data.map((p) => ({
             id: p.id,
             name: p.name,
             price: Number(p.price),
             unit: p.unit,
-            tax_rate: Number(p.gst_percent),
+            // Use tax_rate from API, fallback to gst_percent
+            tax_rate: Number(p.tax_rate || p.gst_percent || 0), 
             stock: Number(p.quantity),
           }))
         : [];
@@ -57,12 +60,18 @@ export default function Billing() {
   // 🔹 Keyboard shortcuts
   useEffect(() => {
     const handleKeys = (e) => {
-      if (e.key === "F2") finalizeInvoice();
-      if (e.key === "F4") window.print();
+      if (e.key === "F2") {
+        e.preventDefault();
+        finalizeInvoice();
+      }
+      if (e.key === "F4" && showModal) {
+        e.preventDefault();
+        handlePrint();
+      }
     };
     window.addEventListener("keydown", handleKeys);
     return () => window.removeEventListener("keydown", handleKeys);
-  }, [cart]);
+  }, [cart, showModal]); // Add showModal dependency
 
   // 🔹 Cart operations
   const addToCart = (p) => {
@@ -89,7 +98,7 @@ export default function Billing() {
   };
 
   const updateQty = (id, newQty) => {
-    if (newQty <= 0) return;
+    if (newQty <= 0) return; // Prevent 0 or negative
     setCart((prev) =>
       prev.map((c) => (c.id === id ? { ...c, qty: newQty } : c))
     );
@@ -98,7 +107,7 @@ export default function Billing() {
   // 🔹 Totals
   const subtotal = cart.reduce((sum, c) => sum + c.qty * c.price, 0);
   const tax = cart.reduce(
-    (sum, c) => sum + (c.qty * c.price * c.tax_rate) / 100,
+    (sum, c) => sum + (c.qty * c.price * (c.tax_rate || 0)) / 100,
     0
   );
   const total = subtotal + tax;
@@ -107,31 +116,39 @@ export default function Billing() {
   const finalizeInvoice = async () => {
     if (!cart.length) return alert("Cart is empty");
 
+    if (!shop || !shop.id) {
+       alert("Error: Shop information is missing. Please log out and log in again.");
+       return;
+    }
+
     try {
+      // --- THIS IS THE FIX ---
+      // The backend InvoiceSerializer expects flat customer_name and customer_mobile,
+      // not a nested 'customer' object.
       const payload = {
-        shop: shop?.id || 1,
-        customer: {
-          name: customerName || "",
-          mobile: customerMobile || "",
-        },
+        shop: shop.id, 
+        customer_name: customerName || "Walk-in",
+        customer_mobile: customerMobile || "",
         items: cart.map((c) => ({
           product: c.id,
           qty: c.qty,
           unit_price: c.price,
-          tax_rate: c.tax_rate,
+          tax_rate: c.tax_rate || 0,
         })),
-        total_amount: total,
+        total_amount: total, // This is an old field, but we send it
+        grand_total: total, // This is the new field
       };
+      // -----------------------
 
-      const res = await createInvoice(payload);
-      setInvoiceData(res.data);
+      const res = await createInvoice(payload); 
+      setInvoiceData(res.data || res); 
       setShowModal(true);
     } catch (err) {
+      console.error(err);
       const msg =
         err.response?.data?.detail ||
         err.response?.data?.message ||
-        "Failed to save invoice.";
-      console.error(err);
+        "Failed to save invoice. The server reported an error.";
       alert(msg);
     }
   };
@@ -144,8 +161,15 @@ export default function Billing() {
     setSearch("");
     setHighlightedId(null);
     setShowModal(false);
+    setInvoiceData(null); // Clear invoice data
     await loadProducts();
     nameRef.current?.focus();
+  };
+
+  // 🔹 Print handler
+  const handlePrint = async () => {
+    window.print();
+    await confirmInvoice();
   };
 
   // 🔹 Search logic
@@ -191,29 +215,32 @@ export default function Billing() {
   const scrollToProduct = (id) => {
     const element = productRefs.current[id];
     if (element) {
-      element.scrollIntoView({ behavior: "smooth", inline: "center" });
+      element.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
       setHighlightedId(id);
     }
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto bg-white shadow rounded">
-      {/* Header */}
-      <div className="flex justify-between items-center border-b pb-2 mb-4">
-        <p className="text-sm text-gray-600">{today}</p>
-        <h1 className="text-xl font-bold">{shopName}</h1>
+    // Responsive main container
+    <div className="p-4 md:p-6 max-w-7xl mx-auto bg-white shadow rounded">
+      {/* Header - Responsive */}
+      <div className="flex flex-col sm:flex-row justify-between items-center border-b pb-2 mb-4 gap-2">
+        <div className="w-full sm:w-auto">
+          <h1 className="text-xl font-bold text-center sm:text-left">{shopName}</h1>
+          <p className="text-sm text-gray-600 text-center sm:text-left">{today}</p>
+        </div>
         <button
           onClick={() =>
             setPrintMode((prev) => (prev === "thermal" ? "a4" : "thermal"))
           }
-          className="bg-gray-100 text-sm px-3 py-1 rounded"
+          className="bg-gray-100 text-sm px-3 py-1 rounded w-full sm:w-auto"
         >
           Mode: {printMode.toUpperCase()}
         </button>
       </div>
 
-      {/* Customer Info */}
-      <div className="flex gap-4 mb-4">
+      {/* Customer Info - Responsive */}
+      <div className="flex flex-col md:flex-row gap-4 mb-4">
         <input
           type="text"
           placeholder="Customer Name"
@@ -221,7 +248,7 @@ export default function Billing() {
           onChange={(e) => setCustomerName(e.target.value)}
           ref={nameRef}
           onKeyDown={(e) => e.key === "Enter" && mobileRef.current?.focus()}
-          className="border p-2 rounded w-1/3"
+          className="border p-2 rounded w-full md:w-1/2" // Changed to md:w-1/2
         />
         <input
           type="text"
@@ -230,7 +257,7 @@ export default function Billing() {
           onChange={(e) => setCustomerMobile(e.target.value)}
           ref={mobileRef}
           onKeyDown={(e) => e.key === "Enter" && searchRef.current?.focus()}
-          className="border p-2 rounded w-1/3"
+          className="border p-2 rounded w-full md:w-1/2" // Changed to md:w-1/2
         />
       </div>
 
@@ -238,7 +265,7 @@ export default function Billing() {
       <div className="mb-4">
         <input
           type="text"
-          placeholder="Search product..."
+          placeholder="Search product (Use ⬅️ and ➡️ to select)"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -252,8 +279,8 @@ export default function Billing() {
         />
       </div>
 
-      {/* Product List */}
-      <div className="flex gap-4 mb-6 overflow-x-auto border p-3 rounded">
+      {/* Product List - Horizontal scroll is good for mobile */}
+      <div className="flex gap-4 mb-6 overflow-x-auto border p-3 rounded bg-gray-50 min-h-[140px]">
         {(products || [])
           .filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
           .map((p) => {
@@ -265,11 +292,11 @@ export default function Billing() {
               <div
                 key={p.id}
                 ref={(el) => (productRefs.current[p.id] = el)}
-                className={`border p-3 min-w-[150px] rounded flex-shrink-0 cursor-pointer hover:bg-gray-100 
-                  ${highlightedId === p.id ? "bg-indigo-200" : ""}`}
+                className={`border bg-white p-3 min-w-[160px] rounded flex-shrink-0 cursor-pointer hover:bg-gray-100 
+                  ${highlightedId === p.id ? "bg-indigo-100 ring-2 ring-indigo-400" : ""}`}
                 onClick={() => addToCart(p)}
               >
-                <h3 className="font-semibold">{p.name}</h3>
+                <h3 className="font-semibold truncate" title={p.name}>{p.name}</h3>
                 <p>₹{p.price} ({p.unit})</p>
                 <p className="text-sm text-gray-500">Tax: {p.tax_rate}%</p>
                 <p className="text-xs text-gray-600">
@@ -281,24 +308,34 @@ export default function Billing() {
               </div>
             );
           })}
+        {products.length === 0 && (
+          <p className="text-gray-500 self-center mx-auto">Loading products...</p>
+        )}
       </div>
 
-      {/* Cart Table */}
+      {/* Cart Table - Horizontal scroll is good for mobile */}
       <div className="overflow-x-auto">
-        <table className="w-full border mb-4 text-sm">
+        <table className="w-full border mb-4 text-sm min-w-[600px]">
           <thead>
             <tr className="bg-gray-100">
-              <th className="p-2 border text-left w-1/3">Product</th>
-              <th className="p-2 border text-center w-1/6">Qty</th>
-              <th className="p-2 border text-right w-1/6">Price</th>
-              <th className="p-2 border text-right w-1/6">Tax%</th>
-              <th className="p-2 border text-right w-1/6">Total</th>
+              <th className="p-2 border text-left w-auto">Product</th>
+              <th className="p-2 border text-center w-[150px]">Qty</th>
+              <th className="p-2 border text-right w-[100px]">Price</th>
+              <th className="p-2 border text-right w-[80px]">Tax%</th>
+              <th className="p-2 border text-right w-[120px]">Total</th>
             </tr>
           </thead>
           <tbody>
+            {cart.length === 0 && (
+              <tr>
+                <td colSpan="5" className="text-center p-6 text-gray-500">
+                  Cart is empty. Click a product to add it.
+                </td>
+              </tr>
+            )}
             {cart.map((c) => {
               const lineTotal = c.qty * c.price;
-              const taxAmt = (lineTotal * c.tax_rate) / 100;
+              const taxAmt = (lineTotal * (c.tax_rate || 0)) / 100;
               const totalWithTax = lineTotal + taxAmt;
               return (
                 <tr key={c.id}>
@@ -321,10 +358,10 @@ export default function Billing() {
                     </button>
                     <input
                       type="number"
-                      step="0.01"
+                      step="1" // Use step 1 for whole quantities, or 0.01 for decimals
                       value={c.qty}
                       onChange={(e) => updateQty(c.id, Number(e.target.value))}
-                      className="w-16 border p-1 rounded text-center"
+                      className="w-16 border p-1 rounded text-center mx-1"
                     />
                     <button
                       onClick={() => updateQty(c.id, c.qty + 1)}
@@ -333,7 +370,7 @@ export default function Billing() {
                       +
                     </button>
                   </td>
-                  <td className="p-2 border text-right">₹{c.price}</td>
+                  <td className="p-2 border text-right">₹{c.price.toFixed(2)}</td>
                   <td className="p-2 border text-right">{c.tax_rate}%</td>
                   <td className="p-2 border text-right font-semibold">
                     ₹{totalWithTax.toFixed(2)}
@@ -349,12 +386,13 @@ export default function Billing() {
       <div className="text-right mb-4 text-sm space-y-1">
         <p>Subtotal: ₹{subtotal.toFixed(2)}</p>
         <p>Tax: ₹{tax.toFixed(2)}</p>
-        <p className="font-bold">Grand Total: ₹{total.toFixed(2)}</p>
+        <p className="text-lg font-bold">Grand Total: ₹{total.toFixed(2)}</p>
       </div>
 
       <button
         onClick={finalizeInvoice}
-        className="bg-blue-600 text-white px-4 py-2 rounded"
+        disabled={cart.length === 0}
+        className="bg-blue-600 text-white px-6 py-3 rounded font-bold text-lg disabled:bg-gray-400"
       >
         Finalize Invoice (F2)
       </button>
@@ -362,18 +400,20 @@ export default function Billing() {
       {/* Invoice Modal */}
       {showModal && invoiceData && (
         <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-50 p-4">
-          <div id="printableBill" className="bg-white w-80 p-6">
+          <div id="printableBill" className="bg-white w-80 p-4"> {/* w-80 is 320px, good for thermal */}
             <div className="text-center mb-2">
               <h2 className="text-lg font-bold">{shopName}</h2>
-              <p className="text-sm">
+              <p className="text-xs">{shop.address}</p>
+              <p className="text-xs">{shop.contact_phone}</p>
+              <p className="text-sm mt-2">
                 Invoice No: #{String(invoiceData.number || 1).padStart(5, "0")}
               </p>
-              <p className="text-sm">
+              <p className="text-xs">
                 {new Date(invoiceData.invoice_date).toLocaleString()}
               </p>
             </div>
 
-            {(invoiceData.customer_name || invoiceData.customer_mobile) && (
+            {(invoiceData.customer_name && invoiceData.customer_name !== "Walk-in") && (
               <p className="mb-2 text-sm">
                 Customer: {invoiceData.customer_name || ""}{" "}
                 {invoiceData.customer_mobile
@@ -382,70 +422,67 @@ export default function Billing() {
               </p>
             )}
 
-            <hr className="my-2 border-t-2 border-gray-400" />
+            <hr className="my-2 border-dashed border-gray-400" />
 
-            <table className="w-full text-sm my-2">
+            <table className="w-full text-xs my-2">
               <thead>
-                <tr>
-                  <th className="text-left">Item</th>
-                  <th className="text-center">Qty</th>
-                  <th className="text-right">Rate</th>
-                  <th className="text-right">Total</th>
+                <tr className="border-b border-dashed border-gray-400">
+                  <th className="text-left py-1">Item</th>
+                  <th className="text-center py-1">Qty</th>
+                  <th className="text-right py-1">Rate</th>
+                  <th className="text-right py-1">Total</th>
                 </tr>
               </thead>
-              <tbody className="my-2 border-t-2 border-gray-400">
+              <tbody>
                 {invoiceData.items.map((it, idx) => {
-                  const lineTotal =
-                    it.qty * it.unit_price * (1 + it.tax_rate / 100);
+                  const lineTotal = it.qty * it.unit_price; // Total before tax
                   return (
-                    <tr key={idx}>
-                      <td>{it.product_name || it.product}</td>
-                      <td className="text-center">{it.qty}</td>
-                      <td className="text-right">₹{it.unit_price}</td>
-                      <td className="text-right">₹{lineTotal.toFixed(2)}</td>
+                    <tr key={idx} className="border-b border-dashed border-gray-300">
+                      <td className="py-1">{it.product_name || it.product}</td>
+                      <td className="text-center py-1">{it.qty}</td>
+                      <td className="text-right py-1">₹{Number(it.unit_price || 0).toFixed(2)}</td>
+                      <td className="text-right py-1">₹{Number(lineTotal || 0).toFixed(2)}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
 
-            <hr className="my-2 border-t-2 border-gray-400" />
+            <hr className="my-2 border-dashed border-gray-400" />
 
             <div className="text-right text-sm space-y-1 mt-2">
-              <p>Subtotal: ₹{invoiceData.subtotal || invoiceData.total_amount}</p>
-              <p>Tax: ₹{invoiceData.tax_total || 0}</p>
-              <p className="font-bold">
+              {/* Use the totals from the backend response for accuracy */}
+              <p>Subtotal: ₹{Number(invoiceData.subtotal).toFixed(2)}</p>
+              <p>Tax: ₹{Number(invoiceData.tax_total).toFixed(2)}</p>
+              <p className="font-bold text-base">
                 Grand Total: ₹
-                {invoiceData.grand_total || invoiceData.total_amount}
+                {Number(invoiceData.grand_total).toFixed(2)}
               </p>
             </div>
 
-            <hr className="my-2 border-t-2 border-gray-400" />
+            <hr className="my-2 border-dashed border-gray-400" />
 
             <p className="text-center mt-4 text-sm">*** Thank you! Visit Again ***</p>
 
-            <div id="modal-actions" className="mt-4 flex justify-end gap-2">
+            <div id="modal-actions" className="mt-6 flex justify-around gap-2">
               <button
-                onClick={async () => {
-                  window.print();
-                  await confirmInvoice();
-                }}
-                className="bg-indigo-600 text-white px-4 py-2 rounded"
+                onClick={handlePrint}
+                className="bg-indigo-600 text-white px-4 py-2 rounded w-1/2"
               >
                 Print (F4)
               </button>
               <button
-                onClick={() => setShowModal(false)}
-                className="bg-gray-200 px-4 py-2 rounded"
+                onClick={confirmInvoice} // Use confirmInvoice to close AND reset
+                className="bg-gray-300 px-4 py-2 rounded w-1/2"
               >
-                Cancel
+                Close
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Print Styles */}
+  {/* Print Styles */}
       <style>{`
         @page {
           size: ${printMode === "a4" ? "A4 portrait" : "80mm"}; 

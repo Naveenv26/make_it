@@ -2,32 +2,51 @@ from pathlib import Path
 from datetime import timedelta
 import environ
 
-# Initialise environment variables
-env = environ.Env()
-environ.Env.read_env()  # reads .env file at BASE_DIR
-RAZORPAY_KEY_ID = env("RAZORPAY_KEY_ID", default="")
-RAZORPAY_KEY_SECRET = env("RAZORPAY_KEY_SECRET", default="")
-
+# =======================================
+# Environment Setup
+# =======================================
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+env = environ.Env()
+environ.Env.read_env()  # Reads from .env file
+
+# =======================================
+# Security & Debug
+# =======================================
 SECRET_KEY = 'dev-secret-key-change-me'
 DEBUG = True
 ALLOWED_HOSTS = ['*']
 
+# =======================================
+# Applications
+# =======================================
 INSTALLED_APPS = [
-    
+    # Django Core
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    # Third Party
     'rest_framework',
-    'corsheaders',
     'rest_framework_simplejwt',
+    'corsheaders',
+
+    # Local Apps
     'api',
-    'accounts', 'shops', 'catalog', 'customers', 'sales', 'reports',
+    'accounts',
+    'shops',
+    'catalog',
+    'customers',
+    'sales',
+    'reports',
 ]
 
+# =======================================
+# Middleware
+# =======================================
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -37,11 +56,18 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    "api.middleware.SubscriptionMiddleware",
+    'api.middleware.SubscriptionMiddleware',
 ]
 
+# =======================================
+# URL / WSGI
+# =======================================
 ROOT_URLCONF = 'core.urls'
+WSGI_APPLICATION = 'core.wsgi.application'
 
+# =======================================
+# Templates
+# =======================================
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -58,8 +84,9 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'core.wsgi.application'
-
+# =======================================
+# Database
+# =======================================
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -67,38 +94,25 @@ DATABASES = {
     }
 }
 
+# =======================================
+# Authentication
+# =======================================
 AUTH_USER_MODEL = 'accounts.User'
-
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
-}
-
-
-
-CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = [
-    env("FRONTEND_URL", default="http://localhost:5173"),
-]
-CSRF_TRUSTED_ORIGINS = [
-    env("FRONTEND_URL", default="http://localhost:5173"),
-    "http://127.0.0.1:5173",
+AUTHENTICATION_BACKENDS = [
+    'accounts.backends.EmailBackend',  # Your new email backend
+    'django.contrib.auth.backends.ModelBackend', # The default backend
 ]
 
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
-SESSION_COOKIE_SAMESITE = "Lax"
-CSRF_COOKIE_SAMESITE = "Lax"
-SECURE_BROWSER_XSS_FILTER = True
-X_FRAME_OPTIONS = "DENY"
-
-# REST framework + SimpleJWT settings
+# =======================================
+# REST Framework & JWT
+# =======================================
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
-    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.UserRateThrottle",
         "rest_framework.throttling.AnonRateThrottle",
@@ -109,8 +123,6 @@ REST_FRAMEWORK = {
     },
 }
 
-# Simple JWT
-from datetime import timedelta
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
@@ -119,23 +131,51 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-# Razorpay credentials from env
+# =======================================
+# Razorpay
+# =======================================
 RAZORPAY_KEY_ID = env("RAZORPAY_KEY_ID", default="")
 RAZORPAY_KEY_SECRET = env("RAZORPAY_KEY_SECRET", default="")
 
-# Static/media (example)
+# =======================================
+# CORS & CSRF
+# =======================================
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    env("FRONTEND_URL", default="http://localhost:5173"),
+]
+CSRF_TRUSTED_ORIGINS = [
+    env("FRONTEND_URL", default="http://localhost:5173"),
+    "http://127.0.0.1:5173",
+]
+
+# =======================================
+# Security Headers
+# =======================================
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SAMESITE = "Lax"
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = "DENY"
+
+# =======================================
+# Static & Media
+# =======================================
 STATIC_URL = "/static/"
 MEDIA_URL = "/media/"
 
-
-
+# =======================================
+# Localization
+# =======================================
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'Asia/Kolkata'
 USE_I18N = True
 USE_TZ = True
 
-STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# EMAIL SETTINGS (Development only)
+# =======================================
+# Email (Development Only)
+# =======================================
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

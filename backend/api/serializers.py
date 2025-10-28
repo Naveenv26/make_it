@@ -1,16 +1,31 @@
 # backend/api/serializers.py
 import re
-from django.contrib.auth.models import User
+# --- FIX: Import get_user_model ---
+from django.contrib.auth import get_user_model 
+from django.db import transaction
 from rest_framework import serializers
 from .models import SubscriptionPlan, UserSubscription, Payment, Expense
 from shops.models import TaxProfile
 
-
-# THIS IS THE FIX
 from catalog.models import Product
 from customers.models import Customer
 from sales.models import Invoice, InvoiceItem
 from shops.models import Shop
+
+# --- FIX: Get the correct User model ---
+User = get_user_model()
+
+
+# --- NEW: Add this UserSerializer ---
+class UserSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the Custom User model (for /api/me/ endpoint).
+    """
+    class Meta:
+        model = User
+        # Include fields you want to send to the frontend
+        fields = ("id", "username", "email", "role", "shop") 
+        read_only_fields = ("id", "role", "shop")
 
 
 # ---------- Register serializer ----------
@@ -19,9 +34,13 @@ class RegisterSerializer(serializers.ModelSerializer):
     password2 = serializers.CharField(write_only=True, required=False)
 
     class Meta:
-        model = User
+        model = User  # <-- This now correctly points to your custom User
         fields = ("id", "username", "email", "password", "password2", "first_name", "last_name")
+        # Note: Your custom User model uses email as USERNAME_FIELD
+        # This serializer might conflict with your ShopRegistrationSerializer
+        # and should be reviewed. But it's fixed to use the right model.
 
+    # ... (rest of your validation logic for RegisterSerializer) ...
     def validate_username(self, value):
         if len(value) < 4:
             raise serializers.ValidationError("Username must be at least 4 characters long.")
@@ -48,9 +67,16 @@ class RegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop("password2", None)
         password = validated_data.pop("password")
+        
+        # --- FIX: Use email for username if username is not provided ---
+        # Your custom model requires email, but this serializer uses username.
+        # This is a temporary patch. You should align your serializers.
+        email = validated_data.get("email", "")
+        username = validated_data.get("username", email) # Use email as username if not given
+
         user = User(
-            username=validated_data.get("username"),
-            email=validated_data.get("email", ""),
+            username=username,
+            email=email,
             first_name=validated_data.get("first_name", ""),
             last_name=validated_data.get("last_name", ""),
         )
@@ -71,7 +97,9 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = "__all__"
-        read_only_fields = ("id",)
+        # --- THIS IS THE FIX ---
+        # Add "shop" to this tuple
+        read_only_fields = ("id", "shop")
 
     def validate_price(self, value):
         if value < 0:
@@ -83,7 +111,6 @@ class ProductSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Quantity must be non-negative.")
         return value
 
-
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
@@ -92,41 +119,118 @@ class CustomerSerializer(serializers.ModelSerializer):
 
 
 class InvoiceItemSerializer(serializers.ModelSerializer):
-    product_detail = ProductSerializer(source="product", read_only=True)
-
-    # THIS IS THE FIX
+    # ... (Keep this serializer as it was) ...
+    product_name = serializers.CharField(source='product.name', read_only=True)
     class Meta:
         model = InvoiceItem
-        fields = ("id", "product", "product_detail", "qty", "unit_price")
+        fields = ("id", "product", "product_name", "qty", "unit_price", "tax_rate")
+        read_only_fields = ("id", "product_name")
 
 class InvoiceSerializer(serializers.ModelSerializer):
     items = InvoiceItemSerializer(many=True)
+    customer_name = serializers.CharField(allow_blank=True, required=False, write_only=True)
+    customer_mobile = serializers.CharField(allow_blank=True, required=False, write_only=True)
+    customer_detail = CustomerSerializer(source="customer", read_only=True)
 
     class Meta:
         model = Invoice
-        fields = ("id", "shop", "customer", "created_at", "total_amount", "status", "items")
-        read_only_fields = ("id", "created_at", "total_amount")
+        fields = (
+            "id", "shop", "customer", "customer_detail", "customer_name", "customer_mobile",
+            "created_at", "total_amount", "subtotal", "tax_total", "grand_total", "status", "items",
+            "invoice_date", "number"
+        )
+        read_only_fields = (
+            "id", "shop", "customer", "created_at", "total_amount", "subtotal",
+            "tax_total", "grand_total", "customer_detail", "invoice_date", "number"
+        )
 
+    @transaction.atomic
     def create(self, validated_data):
         items_data = validated_data.pop("items", [])
-        invoice = Invoice.objects.create(**validated_data)
+        request = self.context.get('request')
+        if not request or not hasattr(request.user, 'shop'):
+             raise serializers.ValidationError("Could not determine the shop for this request.")
+        shop = request.user.shop
+
+        customer_name = validated_data.pop("customer_name", "Walk-in")
+        customer_mobile = validated_data.pop("customer_mobile", None)
+
+        customer = None
+        if customer_mobile:
+            customer, created = Customer.objects.get_or_create(
+                shop=shop,
+                mobile=customer_mobile,
+                defaults={'name': customer_name}
+            )
+
+        # --- GENERATE UNIQUE INVOICE NUMBER ---
+        last_invoice = Invoice.objects.filter(shop=shop).order_by('-number').first()
+        if last_invoice and last_invoice.number:
+             # Try converting number to int, handle potential non-numeric values
+             try:
+                 next_number = int(last_invoice.number) + 1
+             except (ValueError, TypeError):
+                 # Fallback if number isn't an integer string
+                 # You might want a more robust sequence generator here
+                 next_number = (last_invoice.id or 0) + 1 
+        else:
+             next_number = 1 # Start from 1 if no invoices exist
+
+        # Format the number (optional, e.g., padding with zeros)
+        # formatted_number = f"{next_number:05d}" # Example: 00001
+        formatted_number = str(next_number) # Simple string conversion
+        # ----------------------------------------
+
+        invoice = Invoice.objects.create(
+            shop=shop,
+            customer=customer,
+            customer_name=customer_name,
+            customer_mobile=customer_mobile,
+            status="PAID",
+            number=formatted_number # <-- Assign the generated number
+        )
+
+        total_amount = 0
+        subtotal = 0
+        tax_total = 0
+
         for item_data in items_data:
-            InvoiceItem.objects.create(invoice=invoice, **item_data)
-        invoice.calculate_total()
+            prod = item_data['product']
+            qty = item_data['qty']
+            price = item_data['unit_price']
+            tax_rate = item_data.get('tax_rate', 0)
+
+            line_subtotal = price * qty
+            line_tax = (line_subtotal * tax_rate) / 100
+            line_total = line_subtotal + line_tax
+
+            subtotal += line_subtotal
+            tax_total += line_tax
+            total_amount += line_total
+
+            InvoiceItem.objects.create(
+                invoice=invoice,
+                product=prod,
+                qty=qty,
+                unit_price=price,
+                tax_rate=tax_rate,
+                line_total=line_total
+            )
+
+            from django.db.models import F
+            prod.refresh_from_db()
+            prod.quantity = F('quantity') - qty
+            prod.save()
+
+        invoice.subtotal = subtotal
+        invoice.tax_total = tax_total
+        invoice.grand_total = total_amount
+        invoice.total_amount = total_amount
+        invoice.save()
+
         return invoice
-
-    def update(self, instance, validated_data):
-        items_data = validated_data.pop("items", None)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        if items_data is not None:
-            instance.items.all().delete()
-            for item_data in items_data:
-                InvoiceItem.objects.create(invoice=instance, **item_data)
-        instance.calculate_total()
-        return instance
-
+    
+   
 
 class TaxProfileSerializer(serializers.ModelSerializer):
     class Meta:
@@ -135,6 +239,7 @@ class TaxProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ("id",)
 
 
+# ... (rest of your serializers: SubscriptionPlanSerializer, UserSubscriptionSerializer, etc.) ...
 class SubscriptionPlanSerializer(serializers.ModelSerializer):
     plan_type_display = serializers.CharField(source='get_plan_type_display', read_only=True)
     duration_display = serializers.CharField(source='get_duration_display', read_only=True)
