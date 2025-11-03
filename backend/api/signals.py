@@ -1,16 +1,17 @@
 # backend/api/signals.py
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.utils import timezone
-from datetime import timedelta
-from django.contrib.auth.models import User
-from .models import UserSubscription
+from django.contrib.auth import get_user_model
+from .models import UserSubscription, SubscriptionPlan
+
+User = get_user_model()
 
 @receiver(post_save, sender=User)
-def create_free_trial(sender, instance, created, **kwargs):
+def create_subscription_for_new_user(sender, instance, created, **kwargs):
     if created:
-        UserSubscription.objects.create(
-            user=instance,
-            end_date=timezone.now() + timedelta(days=7),  # 7 days free trial
-            active=True
-        )
+        # Check if a subscription already exists (e.g., from a different signal)
+        if not UserSubscription.objects.filter(user=instance).exists():
+            # Create the subscription object
+            subscription = UserSubscription.objects.create(user=instance)
+            # Try to start the trial
+            subscription.start_trial()

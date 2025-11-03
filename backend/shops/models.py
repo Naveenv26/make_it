@@ -20,6 +20,10 @@ class Shop(models.Model):
     business_type = models.CharField(max_length=40, default="Kirana / Grocery")
     counter_invoice = models.PositiveIntegerField(default=0)
 
+    # --- NEW: Field for Premium WhatsApp feature ---
+    whatsapp_number = models.CharField(max_length=20, blank=True, null=True, help_text="e.g., +919876543210")
+    # ----------------------------------------------
+
     active_subscription = models.ForeignKey(
         SubscriptionPlan,
         null=True,
@@ -46,4 +50,3 @@ class TaxProfile(models.Model):
 
     def __str__(self):
         return f"TaxProfile({self.shop.name})"
-

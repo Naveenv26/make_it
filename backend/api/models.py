@@ -6,25 +6,28 @@ from datetime import timedelta
 
 # ========== SUBSCRIPTION PLANS ==========
 class SubscriptionPlan(models.Model):
+    # --- NEW: Defined Plan Types ---
     PLAN_TYPE_CHOICES = [
+        ('FREE', 'Free'),
         ('BASIC', 'Basic'),
         ('PRO', 'Pro'),
+        ('PREMIUM', 'Premium'),
     ]
     
     DURATION_CHOICES = [
         ('MONTHLY', 'Monthly'),
-        ('SIX_MONTH', '6 Months'),
         ('YEARLY', 'Yearly'),
     ]
     
-    name = models.CharField(max_length=100, default='Default Plan Name') # Add a default name
-    plan_type = models.CharField(max_length=20, choices=PLAN_TYPE_CHOICES, default='BASIC')
+    name = models.CharField(max_length=100, default='Default Plan Name')
+    # --- UPDATED: plan_type now has more choices ---
+    plan_type = models.CharField(max_length=20, choices=PLAN_TYPE_CHOICES, default='FREE')
     duration = models.CharField(max_length=20, choices=DURATION_CHOICES, default='MONTHLY')
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     duration_days = models.IntegerField(help_text="Plan validity in days", default=30)
     
-    features = models.JSONField(default=dict, blank=True)    
     # Features (JSON field for flexibility)
+    # e.g., {"dashboard": true, "stock": true, "billing": true, "max_bills_per_week": 100, "reports": false, "export": false, "whatsapp_reports": false}
     features = models.JSONField(default=dict, blank=True)
     
     is_active = models.BooleanField(default=True)
@@ -39,7 +42,7 @@ class SubscriptionPlan(models.Model):
 
 # ========== USER SUBSCRIPTION ==========
 class UserSubscription(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="usersubscription") # Added related_name
     plan = models.ForeignKey(SubscriptionPlan, null=True, blank=True, on_delete=models.SET_NULL)
     
     # Trial management
@@ -62,14 +65,20 @@ class UserSubscription(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def start_trial(self):
-        """Start 7-day free trial with full Basic features"""
+        """Start 7-day free trial"""
         if not self.trial_used:
-            self.trial_used = True
-            self.trial_start_date = timezone.now()
-            self.trial_end_date = timezone.now() + timedelta(days=7)
-            self.active = True
-            self.save()
-            return True
+            try:
+                # --- UPDATED: Find the 'FREE' plan ---
+                free_plan = SubscriptionPlan.objects.get(plan_type='FREE')
+                self.plan = free_plan
+                self.trial_used = True
+                self.trial_start_date = timezone.now()
+                self.trial_end_date = timezone.now() + timedelta(days=free_plan.duration_days) # Use duration from plan
+                self.active = True # Trial is active
+                self.save()
+                return True
+            except SubscriptionPlan.DoesNotExist:
+                return False # Cannot start trial if FREE plan is not seeded
         return False
 
     def activate_plan(self, plan):
@@ -79,6 +88,7 @@ class UserSubscription(models.Model):
         self.start_date = timezone.now()
         self.end_date = timezone.now() + timedelta(days=plan.duration_days)
         self.grace_period_end = None  # Clear grace period
+        self.trial_end_date = None # Clear trial date
         self.save()
 
     def is_valid(self):
@@ -88,12 +98,13 @@ class UserSubscription(models.Model):
         
         now = timezone.now()
         
+        # --- UPDATED: Check trial OR paid subscription ---
         # Check trial
-        if self.trial_end_date and now <= self.trial_end_date:
+        if self.active and self.trial_used and self.trial_end_date and now <= self.trial_end_date:
             return True
         
         # Check paid subscription
-        if self.active and self.end_date and now <= self.end_date:
+        if self.active and not self.trial_used and self.end_date and now <= self.end_date:
             return True
         
         # Check grace period
@@ -104,38 +115,35 @@ class UserSubscription(models.Model):
 
     def is_trial_active(self):
         """Check if trial is currently active"""
-        if not self.trial_used:
+        if not self.trial_used or not self.active:
             return False
         now = timezone.now()
         return self.trial_end_date and now <= self.trial_end_date
 
     def get_plan_type(self):
         """Get current plan type"""
-        if self.is_trial_active():
-            return 'BASIC'  # Trial gives Basic features
         if self.plan:
             return self.plan.plan_type
         return None
+    
+    # --- NEW: Centralized Feature Check ---
+    def get_features(self):
+        """Returns the features JSON of the current valid plan."""
+        if not self.is_valid():
+            return {}
+            
+        if self.plan:
+            return self.plan.features or {}
+            
+        return {} # Fallback
 
     def has_feature(self, feature_name):
         """Check if user has access to a specific feature"""
         if self.allowed_by_admin:
             return True
         
-        if not self.is_valid():
-            return False
-        
-        plan_type = self.get_plan_type()
-        
-        if plan_type == 'PRO':
-            return True  # Pro has all features
-        
-        if plan_type == 'BASIC':
-            # Basic features only
-            basic_features = ['billing', 'invoice_view', 'stock_view', 'dashboard']
-            return feature_name in basic_features
-        
-        return False
+        features = self.get_features()
+        return features.get(feature_name, False)
 
     def enter_grace_period(self):
         """Enter 3-day grace period after subscription expires"""

@@ -8,13 +8,14 @@ import environ
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env()
-environ.Env.read_env()  # Reads from .env file
+# Read .env file
+environ.Env.read_env(BASE_DIR / '.env')
 
 # =======================================
 # Security & Debug
 # =======================================
-SECRET_KEY = 'dev-secret-key-change-me'
-DEBUG = True
+SECRET_KEY = env('SECRET_KEY', default='dev-secret-key-change-me')
+DEBUG = env.bool('DEBUG', default=True)
 ALLOWED_HOSTS = ['*']
 
 # =======================================
@@ -99,8 +100,8 @@ DATABASES = {
 # =======================================
 AUTH_USER_MODEL = 'accounts.User'
 AUTHENTICATION_BACKENDS = [
-    'accounts.backends.EmailBackend',  # Your new email backend
-    'django.contrib.auth.backends.ModelBackend', # The default backend
+    'accounts.backends.EmailBackend',
+    'django.contrib.auth.backends.ModelBackend',
 ]
 
 # =======================================
@@ -132,21 +133,21 @@ SIMPLE_JWT = {
 }
 
 # =======================================
-# Razorpay
+# Razorpay (FIXED)
 # =======================================
-RAZORPAY_KEY_ID = env("RAZORPAY_KEY_ID", default="")
-RAZORPAY_KEY_SECRET = env("RAZORPAY_KEY_SECRET", default="")
+RAZORPAY_KEY_ID = env('RAZORPAY_KEY_ID', default='')
+RAZORPAY_KEY_SECRET = env('RAZORPAY_KEY_SECRET', default='')
 
 # =======================================
 # CORS & CSRF
 # =======================================
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
-    env("FRONTEND_URL", default="http://localhost:5173"),
+    env('FRONTEND_URL', default='http://localhost:5173'),
 ]
 CSRF_TRUSTED_ORIGINS = [
-    env("FRONTEND_URL", default="http://localhost:5173"),
-    "http://127.0.0.1:5173",
+    env('FRONTEND_URL', default='http://localhost:5173'),
+    'http://127.0.0.1:5173',
 ]
 
 # =======================================
@@ -154,16 +155,16 @@ CSRF_TRUSTED_ORIGINS = [
 # =======================================
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
-SESSION_COOKIE_SAMESITE = "Lax"
-CSRF_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
 SECURE_BROWSER_XSS_FILTER = True
-X_FRAME_OPTIONS = "DENY"
+X_FRAME_OPTIONS = 'DENY'
 
 # =======================================
 # Static & Media
 # =======================================
-STATIC_URL = "/static/"
-MEDIA_URL = "/media/"
+STATIC_URL = '/static/'
+MEDIA_URL = '/media/'
 
 # =======================================
 # Localization
@@ -179,3 +180,4 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Email (Development Only)
 # =======================================
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+DEFAULT_FROM_EMAIL = 'noreply@smartbill.com'

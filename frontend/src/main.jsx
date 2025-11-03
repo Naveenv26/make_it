@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import "./index.css";
+import { Toaster } from "react-hot-toast"; // Import Toaster
 
 // Import all pages
 import Login from "./pages/Login";
@@ -10,8 +11,7 @@ import Billing from "./pages/Billing";
 import Stock from "./pages/Stock";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
-// We still need Subscription, as it's the modal component
-import Subscription from "./pages/Subscription"; 
+// Subscription is now a modal, not a page
 import ShopSetup from "./pages/ShopSetup";
 
 // Import common components
@@ -26,6 +26,15 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     {/* --- WRAP APP IN THE PROVIDER --- */}
     <SubscriptionProvider>
       <BrowserRouter>
+        {/* Add Toaster for notifications */}
+        <Toaster position="bottom-right" toastOptions={{
+          duration: 4000,
+          style: {
+            background: '#333',
+            color: '#fff',
+          },
+        }} />
+
         <Routes>
           {/* Public route */}
           <Route path="/login" element={<Login />} />
@@ -83,10 +92,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           />
 
           {/* Protected routes (WITHOUT Layout) */}
-          
-          {/* --- REMOVED THE /subscription ROUTE --- */}
-          {/* The Subscription component is now rendered inside Layout */}
-          
           <Route
             path="/setup-shop"
             element={
@@ -106,4 +111,3 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     </SubscriptionProvider>
   </React.StrictMode>
 );
-

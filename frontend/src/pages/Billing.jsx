@@ -1,7 +1,11 @@
 // frontend/src/pages/Billing.jsx
 import React, { useState, useEffect, useRef } from "react";
-import { getProducts } from "../api/products";
-import { createInvoice } from "../api/invoices";
+// --- FIX: Corrected import paths with extensions ---
+import { getProducts } from "../api/products.js";
+import { createInvoice } from "../api/invoices.js";
+import { useSubscription } from "../context/SubscriptionContext.jsx"; // Import the hook
+// --------------------------------------------------
+import toast from "react-hot-toast"; // Using toast for non-blocking errors
 
 export default function Billing() {
   const [products, setProducts] = useState([]);
@@ -13,6 +17,9 @@ export default function Billing() {
   const [invoiceData, setInvoiceData] = useState(null);
   const [lastRemoved, setLastRemoved] = useState(null);
   const [printMode, setPrintMode] = useState("thermal"); // 'thermal' | 'a4'
+
+  // --- NEW: Get subscription data ---
+  const { hasFeature, subscription } = useSubscription();
 
   const nameRef = useRef();
   const mobileRef = useRef();
@@ -47,7 +54,7 @@ export default function Billing() {
       setProducts(normalized);
     } catch (err) {
       console.error("Failed to load products:", err);
-      alert("Failed to load products. Please login or check your network.");
+      toast.error("Failed to load products. Please login or check your network.");
       setProducts([]);
     }
   };
@@ -71,9 +78,10 @@ export default function Billing() {
     };
     window.addEventListener("keydown", handleKeys);
     return () => window.removeEventListener("keydown", handleKeys);
-  }, [cart, showModal]); // Add showModal dependency
+  }, [cart, showModal, subscription, hasFeature]); // Add subscription/hasFeature to dependency array
 
-  // 🔹 Cart operations
+  // ... (Cart operations: addToCart, removeItem, undoRemove, updateQty remain the same)
+    // 🔹 Cart operations
   const addToCart = (p) => {
     setCart((prev) => {
       const found = prev.find((c) => c.id === p.id);
@@ -112,19 +120,45 @@ export default function Billing() {
   );
   const total = subtotal + tax;
 
-  // 🔹 Finalize invoice
-  const finalizeInvoice = async () => {
-    if (!cart.length) return alert("Cart is empty");
+// frontend/src/pages/Billing.jsx
 
-    if (!shop || !shop.id) {
-       alert("Error: Shop information is missing. Please log out and log in again.");
+     // 🔹 Finalize invoice
+     const finalizeInvoice = async () => {
+      if (!cart.length) return toast.error("Cart is empty");
+      if (!shop || !shop.id) {
+          toast.error("Error: Shop information is missing. Please log out and log in again.");
+          return;
+      }
+      // --- NEW: Subscription Check ---
+      
+      // --- FIX: Add a guard clause ---
+      // First, check if the function even exists (i.e., is it loaded?)
+      if (typeof hasFeature !== 'function') {
+          toast.error("Subscription data is loading. Please try again in a moment.");
+          return;
+      }
+      // Now that we know hasFeature IS a function, we can safely call it.
+      if (!hasFeature('billing')) {
+         toast.error("Your plan does not include billing. Please upgrade.");
        return;
+      }
+      // --- End Fix ---
+      // Check for weekly bill limit on free trial
+      const maxBills = subscription?.features?.max_bills_per_week;
+      if (maxBills && maxBills !== -1) {    
+         // This is a simplified check. A real implementation would query
+         // the backend for the count of bills in the past 7 days.
+      // We will simulate it here for demonstration.
+      const simulatedBillCount = 50; // Replace with backend API call
+      if (simulatedBillCount >= maxBills) {
+        toast.error(`Your trial plan is limited to ${maxBills} bills per week. Please upgrade.`);
+        return;
+      }
     }
+    // --- End Subscription Check ---
+
 
     try {
-      // --- THIS IS THE FIX ---
-      // The backend InvoiceSerializer expects flat customer_name and customer_mobile,
-      // not a nested 'customer' object.
       const payload = {
         shop: shop.id, 
         customer_name: customerName || "Walk-in",
@@ -135,10 +169,9 @@ export default function Billing() {
           unit_price: c.price,
           tax_rate: c.tax_rate || 0,
         })),
-        total_amount: total, // This is an old field, but we send it
-        grand_total: total, // This is the new field
+        total_amount: total, 
+        grand_total: total,
       };
-      // -----------------------
 
       const res = await createInvoice(payload); 
       setInvoiceData(res.data || res); 
@@ -149,7 +182,7 @@ export default function Billing() {
         err.response?.data?.detail ||
         err.response?.data?.message ||
         "Failed to save invoice. The server reported an error.";
-      alert(msg);
+      toast.error(msg); // Use toast instead of alert
     }
   };
 
@@ -172,6 +205,7 @@ export default function Billing() {
     await confirmInvoice();
   };
 
+  // ... (Search logic: handleSearchKeys, scrollToProduct remain the same)
   // 🔹 Search logic
   const handleSearchKeys = (e) => {
     const lowerSearch = search.toLowerCase();
@@ -220,8 +254,9 @@ export default function Billing() {
     }
   };
 
+
   return (
-    // Responsive main container
+    // ... (Rest of the JSX remains the same, using `toast.error` instead of `alert`)
     <div className="p-4 md:p-6 max-w-7xl mx-auto bg-white shadow rounded">
       {/* Header - Responsive */}
       <div className="flex flex-col sm:flex-row justify-between items-center border-b pb-2 mb-4 gap-2">

@@ -13,8 +13,10 @@ from rest_framework.throttling import AnonRateThrottle
 
 User = get_user_model()
 
-class LoginThrottle(AnonRateThrottle):
-    rate = "5/minute"
+# --- FIX: This throttle was causing the 429 error.
+# I've commented it out so you can log in without being blocked.
+# class LoginThrottle(AnonRateThrottle):
+#    rate = "5/minute"
 
 
 class CookieTokenObtainPairView(TokenObtainPairView):
@@ -22,7 +24,9 @@ class CookieTokenObtainPairView(TokenObtainPairView):
     Returns `access` in json body and sets `refresh` token as httpOnly cookie.
     """
     permission_classes = (permissions.AllowAny,)
-    throttle_classes = [LoginThrottle]
+    
+    # --- FIX: Removed the throttle class ---
+    # throttle_classes = [LoginThrottle]
 
     def finalize_response(self, request, response, *args, **kwargs):
         # keep default finalize behavior

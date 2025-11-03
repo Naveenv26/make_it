@@ -4,8 +4,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 import json
 from .models import Payment, UserSubscription
+from django.conf import settings # <-- Import settings
 
-RAZORPAY_KEY_SECRET = "dummy_secret"
+# --- FIX: Load secret from settings (which reads from .env) ---
+RAZORPAY_KEY_SECRET = settings.RAZORPAY_KEY_SECRET
 
 @csrf_exempt
 def razorpay_webhook(request):
@@ -13,6 +15,7 @@ def razorpay_webhook(request):
     signature = request.headers.get("X-Razorpay-Signature")
 
     try:
+        # --- This will now use your real secret key ---
         razorpay.Utility.verify_webhook_signature(request.body, signature, RAZORPAY_KEY_SECRET)
     except:
         return JsonResponse({"error": "Invalid signature"}, status=400)
