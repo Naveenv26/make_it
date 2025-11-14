@@ -1,4 +1,5 @@
-import client from "./client";
+// frontend/src/api/invoices.js
+import client from "./axios"; // <-- Changed from "./client"
 
 // Create invoice (matches backend payload)
 export const createInvoice = async (data) => {

@@ -1,4 +1,5 @@
-import client from "./client";
+// frontend/src/api/products.js
+import client from "./axios"; // <-- Changed from "./client"
 
 // Get all products
 export const getProducts = async () => {

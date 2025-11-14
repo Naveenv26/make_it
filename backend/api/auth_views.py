@@ -13,11 +13,6 @@ from rest_framework.throttling import AnonRateThrottle
 
 User = get_user_model()
 
-# --- FIX: This throttle was causing the 429 error.
-# I've commented it out so you can log in without being blocked.
-# class LoginThrottle(AnonRateThrottle):
-#    rate = "5/minute"
-
 
 class CookieTokenObtainPairView(TokenObtainPairView):
     """
@@ -25,7 +20,7 @@ class CookieTokenObtainPairView(TokenObtainPairView):
     """
     permission_classes = (permissions.AllowAny,)
     
-    # --- FIX: Removed the throttle class ---
+    # --- FIX: Removed the custom throttle ---
     # throttle_classes = [LoginThrottle]
 
     def finalize_response(self, request, response, *args, **kwargs):
@@ -58,6 +53,11 @@ class CookieTokenRefreshView(APIView):
     If ROTATE_REFRESH_TOKENS enabled, issue new refresh and set cookie.
     """
     permission_classes = (permissions.AllowAny,)
+    
+    # --- 💡 THIS IS THE FIX ---
+    # This tells DRF to not apply any throttles to this specific view
+    throttle_classes = [] 
+    # --- END FIX ---
 
     def post(self, request, *args, **kwargs):
         refresh_token = request.COOKIES.get("refresh_token")

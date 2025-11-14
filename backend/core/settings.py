@@ -1,3 +1,4 @@
+# backend/core/settings.py
 from pathlib import Path
 from datetime import timedelta
 import environ
@@ -124,13 +125,15 @@ REST_FRAMEWORK = {
     },
 }
 
+# --- 💡 MODIFIED THIS SECTION ---
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": True,
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=7),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=14),
+    "ROTATE_REFRESH_TOKENS": False,
+    "BLACKLIST_AFTER_ROTATION": False,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+# ---------------------------------
 
 # =======================================
 # Razorpay (FIXED)
