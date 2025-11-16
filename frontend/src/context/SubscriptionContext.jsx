@@ -110,6 +110,23 @@ export const SubscriptionProvider = ({ children }) => {
     };
   }, [fetchSubscription, subscription, isSubscribed]);
 
+  // --- THIS IS THE FIX (The function definition) ---
+  const hasFeature = useCallback((featureName) => {
+    if (loading || !subscription) {
+      return false; // Not loaded yet
+    }
+    if (subscription.allowed_by_admin) {
+      return true; // Admin has all features
+    }
+    
+    // Check the plan_details.features object
+    // This path matches your UserSubscriptionSerializer
+    const features = subscription?.plan_details?.features;
+    return features ? features[featureName] === true : false;
+    
+  }, [subscription, loading]);
+  // --- END OF FIX ---
+
 
   const value = {
     isModalOpen,
@@ -119,6 +136,7 @@ export const SubscriptionProvider = ({ children }) => {
     isSubscribed,
     loading,
     refetchSubscription: fetchSubscription, // Expose the refetch function
+    hasFeature, // <-- AND THIS IS THE FIX (Adding it to the value)
   };
 
   return (

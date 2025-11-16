@@ -1,7 +1,14 @@
+# backend/customers/admin.py
 from django.contrib import admin
-from . import models
-for m in [getattr(models, n) for n in dir(models) if isinstance(getattr(models, n), type)]:
-    try:
-        admin.site.register(m)
-    except Exception:
-        pass
+from .models import Customer, LoyaltyAccount
+
+class LoyaltyAccountInline(admin.StackedInline):
+    model = LoyaltyAccount
+    extra = 0
+
+@admin.register(Customer)
+class CustomerAdmin(admin.ModelAdmin):
+    list_display = ('name', 'mobile', 'shop', 'email')
+    search_fields = ('name', 'mobile', 'shop__name')
+    raw_id_fields = ('shop',)
+    inlines = [LoyaltyAccountInline]

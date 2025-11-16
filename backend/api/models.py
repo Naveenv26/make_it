@@ -1,3 +1,5 @@
+# backend/api/models.py
+
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
@@ -88,7 +90,13 @@ class UserSubscription(models.Model):
         self.start_date = timezone.now()
         self.end_date = timezone.now() + timedelta(days=plan.duration_days)
         self.grace_period_end = None  # Clear grace period
-        self.trial_end_date = None # Clear trial date
+        
+        # --- FIX: Explicitly clear all trial fields ---
+        self.trial_start_date = None # Add this
+        self.trial_end_date = None    # This line was already here
+        # self.trial_used = True # Keep this as a historical record
+        # --- END FIX ---
+        
         self.save()
 
     def is_valid(self):
@@ -98,13 +106,17 @@ class UserSubscription(models.Model):
         
         now = timezone.now()
         
-        # --- UPDATED: Check trial OR paid subscription ---
         # Check trial
+        # (This logic is fine)
         if self.active and self.trial_used and self.trial_end_date and now <= self.trial_end_date:
             return True
         
+        # --- FIX: This is the main bug fix ---
         # Check paid subscription
-        if self.active and not self.trial_used and self.end_date and now <= self.end_date:
+        # OLD LOGIC: if self.active and not self.trial_used and self.end_date and now <= self.end_date:
+        # NEW LOGIC:
+        if self.active and self.end_date and now <= self.end_date and not self.is_trial_active():
+        # --- END FIX ---
             return True
         
         # Check grace period
@@ -115,8 +127,11 @@ class UserSubscription(models.Model):
 
     def is_trial_active(self):
         """Check if trial is currently active"""
-        if not self.trial_used or not self.active:
+        # --- FIX: Add check for self.plan.plan_type ---
+        # This prevents a paid plan from being seen as a trial
+        if not self.trial_used or not self.active or not self.plan or self.plan.plan_type != 'FREE':
             return False
+        # --- END FIX ---
         now = timezone.now()
         return self.trial_end_date and now <= self.trial_end_date
 

@@ -144,7 +144,8 @@ export default function Billing() {
       }
       // --- End Fix ---
       // Check for weekly bill limit on free trial
-      const maxBills = subscription?.features?.max_bills_per_week;
+      
+      const maxBills = subscription?.plan_details?.features?.max_bills_per_week;
       if (maxBills && maxBills !== -1) {    
          // This is a simplified check. A real implementation would query
          // the backend for the count of bills in the past 7 days.
@@ -485,14 +486,18 @@ export default function Billing() {
 
             <hr className="my-2 border-dashed border-gray-400" />
 
+           {/* Replace that block with this: */}
             <div className="text-right text-sm space-y-1 mt-2">
               {/* Use the totals from the backend response for accuracy */}
               <p>Subtotal: ₹{Number(invoiceData.subtotal).toFixed(2)}</p>
               <p>Tax: ₹{Number(invoiceData.tax_total).toFixed(2)}</p>
+
+              {/* --- THIS IS THE FIX --- */}
               <p className="font-bold text-base">
                 Grand Total: ₹
-                {Number(invoiceData.grand_total).toFixed(2)}
+                {Math.round(Number(invoiceData.grand_total)).toFixed(2)}
               </p>
+              {/* --- END FIX --- */}
             </div>
 
             <hr className="my-2 border-dashed border-gray-400" />
@@ -516,34 +521,93 @@ export default function Billing() {
           </div>
         </div>
       )}
+{/* Print Styles */}
+<style>{`
+  @page {
+    size: ${printMode === "a4" ? "A4 portrait" : "80mm"};
+    margin: 0;
+  }
 
-  {/* Print Styles */}
-      <style>{`
-        @page {
-          size: ${printMode === "a4" ? "A4 portrait" : "80mm"}; 
-          margin: ${printMode === "a4" ? "10mm" : "0"};
+  @media print {
+
+    body * {
+      visibility: hidden !important;
+    }
+
+    #printableBill, #printableBill * {
+      visibility: visible !important;
+    }
+
+    #printableBill {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: ${printMode === "a4" ? "100%" : "72mm"} !important;
+      margin: 0 auto;
+      box-shadow: none !important;
+      border: none !important;
+
+      ${printMode !== "a4" ? `
+        /* ---------- THERMAL FIXES ---------- */
+
+        /* Smaller and tighter text */
+        font-size: 9.5px !important;
+        line-height: 1.15 !important;
+
+        /* Clean padding inside content */
+        padding: 4mm 2mm !important;
+
+        /* Fit-width scaling */
+        transform: scale(0.92);
+        transform-origin: top left;
+
+        /* Force table layout */
+        table {
+          width: 100% !important;
+          border-collapse: collapse !important;
         }
-        @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #printableBill, #printableBill * {
-            visibility: visible !important;
-          }
-          #printableBill {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: ${printMode === "a4" ? "100%" : "80mm"} !important;
-            margin: 0 auto;
-            box-shadow: none !important;
-            border: none !important;
-          }
-          #modal-actions {
-            display: none !important;
-          }
+        table th, table td {
+          padding: 2px 0 !important;
+          text-align: left !important;
         }
-      `}</style>
+
+        /* Ensure no big gaps anywhere */
+        h1, h2, h3, h4, p {
+          margin: 2px 0 !important;
+        }
+
+        /* Make totals right aligned neatly */
+        .totals-row {
+          display: flex;
+          justify-content: flex-end;
+          width: 100%;
+        }
+
+        /* Fix Grand Total spacing */
+        .grand-total {
+          margin-top: 6px !important;
+          margin-bottom: 6px !important;
+          font-size: 11px !important;
+          font-weight: bold;
+          text-align: center;
+        }
+
+        hr {
+          margin: 3px 0 !important;
+        }
+      ` : ""}
+
+      box-sizing: border-box !important;
+      height: auto !important;
+      overflow: visible !important;
+    }
+
+    #modal-actions {
+      display: none !important;
+    }
+  }
+`}</style>
+
     </div>
   );
 }

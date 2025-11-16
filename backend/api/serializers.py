@@ -2,11 +2,11 @@
 import re
 # --- FIX: Import get_user_model ---
 from django.contrib.auth import get_user_model 
-from django.db import transaction
+from django.db import transaction , models
 from rest_framework import serializers
 from .models import SubscriptionPlan, UserSubscription, Payment, Expense
 from shops.models import TaxProfile
-
+from django.db.models import F
 from catalog.models import Product
 from customers.models import Customer
 from sales.models import Invoice, InvoiceItem
@@ -144,13 +144,30 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "tax_total", "grand_total", "customer_detail", "invoice_date", "number"
         )
 
+
     @transaction.atomic
     def create(self, validated_data):
         items_data = validated_data.pop("items", [])
         request = self.context.get('request')
         if not request or not hasattr(request.user, 'shop'):
              raise serializers.ValidationError("Could not determine the shop for this request.")
-        shop = request.user.shop
+        
+        # --- START FIX: ATOMIC & GLOBALLY UNIQUE INVOICE NUMBER ---
+        
+        # 1. Lock the shop row for this transaction to prevent race conditions
+        shop = Shop.objects.select_for_update().get(id=request.user.shop.id)
+
+        # 2. Atomically increment the counter on the database
+        shop.counter_invoice = F('counter_invoice') + 1
+        shop.save()
+        
+        # 3. Get the new, unique value back from the database
+        shop.refresh_from_db() 
+        
+        # 4. Create a GLOBALLY unique number (e.g., "1-1", "2-1", "1-2")
+        formatted_number = f"{shop.id}-{shop.counter_invoice}"
+        
+        # --- END FIX ---
 
         customer_name = validated_data.pop("customer_name", "Walk-in")
         customer_mobile = validated_data.pop("customer_mobile", None)
@@ -163,31 +180,13 @@ class InvoiceSerializer(serializers.ModelSerializer):
                 defaults={'name': customer_name}
             )
 
-        # --- GENERATE UNIQUE INVOICE NUMBER ---
-        last_invoice = Invoice.objects.filter(shop=shop).order_by('-number').first()
-        if last_invoice and last_invoice.number:
-             # Try converting number to int, handle potential non-numeric values
-             try:
-                 next_number = int(last_invoice.number) + 1
-             except (ValueError, TypeError):
-                 # Fallback if number isn't an integer string
-                 # You might want a more robust sequence generator here
-                 next_number = (last_invoice.id or 0) + 1 
-        else:
-             next_number = 1 # Start from 1 if no invoices exist
-
-        # Format the number (optional, e.g., padding with zeros)
-        # formatted_number = f"{next_number:05d}" # Example: 00001
-        formatted_number = str(next_number) # Simple string conversion
-        # ----------------------------------------
-
         invoice = Invoice.objects.create(
             shop=shop,
             customer=customer,
             customer_name=customer_name,
             customer_mobile=customer_mobile,
             status="PAID",
-            number=formatted_number # <-- Assign the generated number
+            number=formatted_number # <-- This is now globally unique
         )
 
         total_amount = 0
@@ -217,10 +216,9 @@ class InvoiceSerializer(serializers.ModelSerializer):
                 line_total=line_total
             )
 
-            from django.db.models import F
-            prod.refresh_from_db()
+            # This F() expression prevents race conditions on stock updates too
             prod.quantity = F('quantity') - qty
-            prod.save()
+            prod.save(update_fields=['quantity']) # More efficient save
 
         invoice.subtotal = subtotal
         invoice.tax_total = tax_total
@@ -229,7 +227,6 @@ class InvoiceSerializer(serializers.ModelSerializer):
         invoice.save()
 
         return invoice
-    
    
 
 class TaxProfileSerializer(serializers.ModelSerializer):
